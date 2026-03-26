@@ -34,8 +34,8 @@ go-ui/coverage.out
 *.pdb
 
 rust_core/libs/WinDivert*
-  *.dll
-  *.sys
-  *.lib
-  *.exp
-  *.def
+*.dll
+*.sys
+*.lib
+*.exp
+*.def
