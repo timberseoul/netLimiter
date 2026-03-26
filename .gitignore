@@ -1,0 +1,41 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment / local overrides
+.env
+.env.*
+*.local
+
+# Logs
+*.log
+
+# Build outputs
+/build/
+/dist/
+/out/
+
+# Rust
+rust_core/target/
+**/*.rs.bk
+
+# Go
+go-ui/bin/
+go-ui/coverage.out
+
+# Windows binaries and debug symbols
+*.exe
+*.pdb
+
+rust_core/libs/WinDivert*
+  *.dll
+  *.sys
+  *.lib
+  *.exp
+  *.def

@@ -25,7 +25,7 @@ netLimiter/
 - Windows（需管理员权限运行）
 - Rust（MSVC 工具链）
 - Go 1.21+
-- WinDivert 2.x 文件放到 `rust_core/libs/`：
+- WinDivert 2.x（本仓库默认不包含该组件，需手动下载）：
   - `WinDivert.dll`
   - `WinDivert64.sys`
   - `WinDivert.lib`
@@ -81,3 +81,20 @@ go test ./...
 - 提示连接失败：先确认 `netlimiter-core` 已启动，且使用管理员权限运行。
 - 无流量数据显示：检查 WinDivert 文件是否齐全、路径是否在 `rust_core/libs/`。
 - 构建报错：确认 Rust/Go 版本与 MSVC 工具链已安装。
+
+## 许可证
+- 本项目采用 **MIT License**，详见仓库根目录 `LICENSE`。
+
+## 第三方依赖与合规说明（WinDivert）
+- 本项目依赖 WinDivert 驱动与库文件，但 **仓库默认不提交这些二进制文件**。
+- WinDivert 官方仓库：<https://github.com/basil00/WinDivert>
+- 你需要下载并放入 `rust_core/libs/` 的最小文件：
+  - `WinDivert.dll`
+  - `WinDivert64.sys`
+  - `WinDivert.lib`
+- 使用方式：
+  1. 从官方仓库的 Release 页面下载 WinDivert 压缩包。
+  2. 将上述 3 个文件复制到 `rust_core/libs/`。
+  3. 构建前设置环境变量：`$env:WINDIVERT_PATH = (Resolve-Path ".\\rust_core\\libs").Path`
+  4. 执行 `.\scripts\build.ps1` 和 `.\scripts\run.ps1`（管理员权限）。
+- 重新分发 WinDivert 文件前，请确认对应版本许可证条款并在发布说明中标注来源与版本。
