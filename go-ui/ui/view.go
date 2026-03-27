@@ -89,7 +89,6 @@ var categoryOrder = []struct {
 	{"user", "👤 User Processes"},
 	{"system", "⚙ System Processes"},
 	{"service", "🔧 Services"},
-	{"unknown", "❓ Unknown"},
 }
 
 // View implements tea.Model.
@@ -120,7 +119,6 @@ func (m Model) View() string {
 		{"user", "User[2]"},
 		{"system", "System[3]"},
 		{"service", "Service[4]"},
-		{"unknown", "Unknown[5]"},
 	}
 	for _, f := range filters {
 		if m.filterCategory == f.key {
@@ -140,11 +138,6 @@ func (m Model) View() string {
 	}
 	b.WriteString(sortIndicator.Render(sortLabel) + "\n\n")
 
-	// Table header
-	header := fmt.Sprintf("  %-8s  %-24s  %-8s  %12s  %12s  %10s  %10s",
-		"PID", "Process", "Status", "↑ Speed", "↓ Speed", "↑ Total", "↓ Total")
-	b.WriteString(headerStyle.Render(header) + "\n")
-
 	// Group flows by category
 	flows := m.sortFlows()
 	grouped := make(map[string][]types.ProcessFlow)
@@ -159,11 +152,25 @@ func (m Model) View() string {
 		grouped[cat] = append(grouped[cat], f)
 	}
 
-	totalRows := 0
-	maxRows := m.height - 16
-	if maxRows < 10 {
-		maxRows = 10
+	// Compute dynamic name column width (min 16, fit longest name)
+	nameColWidth := 16
+	for _, catFlows := range grouped {
+		for _, f := range catFlows {
+			if len(f.Name) > nameColWidth {
+				nameColWidth = len(f.Name)
+			}
+		}
 	}
+	// Cap at a reasonable max to prevent extreme widths
+	if nameColWidth > 60 {
+		nameColWidth = 60
+	}
+
+	// Table header (dynamic name width)
+	headerFmt := fmt.Sprintf("  %%-8s  %%-%ds  %%-8s  %%12s  %%12s  %%10s  %%10s", nameColWidth)
+	header := fmt.Sprintf(headerFmt,
+		"PID", "Process", "Status", "↑ Speed", "↓ Speed", "↑ Total", "↓ Total")
+	b.WriteString(headerStyle.Render(header) + "\n")
 
 	hasAny := false
 	for _, cat := range categoryOrder {
@@ -173,9 +180,13 @@ func (m Model) View() string {
 		}
 	}
 
+	// Build all content rows first, then apply scrolling viewport
+	var contentLines []string
+
 	if !hasAny {
-		b.WriteString(rowStyle.Render("  Waiting for network activity...") + "\n")
+		contentLines = append(contentLines, rowStyle.Render("  Waiting for network activity..."))
 	} else {
+		rowFmtName := fmt.Sprintf("%%-%ds", nameColWidth)
 		for _, cat := range categoryOrder {
 			catFlows, ok := grouped[cat.key]
 			if !ok || len(catFlows) == 0 {
@@ -183,63 +194,82 @@ func (m Model) View() string {
 			}
 
 			// Category section header
-			b.WriteString("\n")
+			contentLines = append(contentLines, "")
 			sectionHeader := fmt.Sprintf("── %s (%d) ──", cat.label, len(catFlows))
-			b.WriteString(categoryHeaderStyle.Render(sectionHeader) + "\n")
+			contentLines = append(contentLines, categoryHeaderStyle.Render(sectionHeader))
 
 			for _, f := range catFlows {
-				if totalRows >= maxRows {
-					remaining := 0
-					for _, cf := range categoryOrder {
-						remaining += len(grouped[cf.key])
-					}
-					remaining -= totalRows
-					if remaining > 0 {
-						b.WriteString(rowStyle.Render(fmt.Sprintf("  ... and %d more processes", remaining)) + "\n")
-					}
-					goto done
+				name := f.Name
+				if len(name) > nameColWidth {
+					name = name[:nameColWidth-3] + "..."
 				}
 
 				inactive := f.Status == "inactive"
 				var row string
 				if inactive {
 					pid := dimPidStyle.Render(fmt.Sprintf("%-8d", f.PID))
-					name := f.Name
-					if len(name) > 24 {
-						name = name[:21] + "..."
-					}
-					name = dimNameStyle.Render(fmt.Sprintf("%-24s", name))
+					nameR := dimNameStyle.Render(fmt.Sprintf(rowFmtName, name))
 					st := statusInactiveStyle.Render(fmt.Sprintf("%-8s", "idle"))
 					up := dimSpeedStyle.Render(fmt.Sprintf("%12s", "—"))
 					down := dimSpeedStyle.Render(fmt.Sprintf("%12s", "—"))
 					tUp := dimSpeedStyle.Render(fmt.Sprintf("%10s", formatBytes(f.TotalUpload)))
 					tDown := dimSpeedStyle.Render(fmt.Sprintf("%10s", formatBytes(f.TotalDownload)))
-					row = fmt.Sprintf("  %s  %s  %s  %s  %s  %s  %s", pid, name, st, up, down, tUp, tDown)
+					row = fmt.Sprintf("  %s  %s  %s  %s  %s  %s  %s", pid, nameR, st, up, down, tUp, tDown)
 				} else {
 					pid := pidStyle.Render(fmt.Sprintf("%-8d", f.PID))
-					name := f.Name
-					if len(name) > 24 {
-						name = name[:21] + "..."
-					}
-					name = nameStyle.Render(fmt.Sprintf("%-24s", name))
+					nameR := nameStyle.Render(fmt.Sprintf(rowFmtName, name))
 					st := statusActiveStyle.Render(fmt.Sprintf("%-8s", "●"))
 					up := speedUpStyle.Render(fmt.Sprintf("%12s", formatSpeed(f.UploadSpeed)))
 					down := speedDownStyle.Render(fmt.Sprintf("%12s", formatSpeed(f.DownloadSpeed)))
 					tUp := rowStyle.Render(fmt.Sprintf("%10s", formatBytes(f.TotalUpload)))
 					tDown := rowStyle.Render(fmt.Sprintf("%10s", formatBytes(f.TotalDownload)))
-					row = fmt.Sprintf("  %s  %s  %s  %s  %s  %s  %s", pid, name, st, up, down, tUp, tDown)
+					row = fmt.Sprintf("  %s  %s  %s  %s  %s  %s  %s", pid, nameR, st, up, down, tUp, tDown)
 				}
 
-				b.WriteString(row + "\n")
-				totalRows++
+				contentLines = append(contentLines, row)
 			}
 		}
 	}
-done:
+
+	// Apply scrolling viewport
+	viewportHeight := m.height - 12 // reserve for title, filter, sort, header, footer, totals
+	if viewportHeight < 5 {
+		viewportHeight = 5
+	}
+
+	totalContentRows := len(contentLines)
+	// Clamp scroll offset
+	maxScroll := totalContentRows - viewportHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	scrollOff := m.scrollOffset
+	if scrollOff > maxScroll {
+		scrollOff = maxScroll
+	}
+	if scrollOff < 0 {
+		scrollOff = 0
+	}
+
+	endIdx := scrollOff + viewportHeight
+	if endIdx > totalContentRows {
+		endIdx = totalContentRows
+	}
+
+	for _, line := range contentLines[scrollOff:endIdx] {
+		b.WriteString(line + "\n")
+	}
+
+	// Scroll indicator
+	if totalContentRows > viewportHeight {
+		scrollInfo := fmt.Sprintf("  ── ↑↓/j/k scroll | showing %d-%d of %d rows ──",
+			scrollOff+1, endIdx, totalContentRows)
+		b.WriteString(helpStyle.Render(scrollInfo) + "\n")
+	}
 
 	// Footer / help
 	b.WriteString("\n")
-	help := "  [s] Sort speed  [n] Name  [p] PID  [r] Reverse  [1-5] Filter  [q] Quit"
+	help := "  [s] Sort speed  [n] Name  [p] PID  [r] Reverse  [1-4] Filter  [↑↓] Scroll  [q] Quit"
 	b.WriteString(helpStyle.Render(help) + "\n")
 
 	// Total (respecting filter)

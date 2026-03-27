@@ -7,7 +7,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/sys/windows"
 
+	"netlimiter-ui/core"
 	"netlimiter-ui/ipc"
 	"netlimiter-ui/service"
 	"netlimiter-ui/ui"
@@ -50,8 +52,41 @@ func isAccessDenied(err error) bool {
 	return strings.Contains(s, "access is denied") || strings.Contains(s, "拒绝访问")
 }
 
+func isRunningAsAdmin() bool {
+	// UAC elevation check: true only when this process is running elevated.
+	return windows.GetCurrentProcessToken().IsElevated()
+}
+
 func main() {
-	// Connect to the Rust core via named pipe
+	if !isRunningAsAdmin() {
+		showHint(
+			"检测到当前未以管理员身份运行。",
+			"请以管理员身份重新运行本程序（右键→以管理员身份运行）。",
+		)
+		os.Exit(1)
+	}
+
+	// ── 1. Launch the Rust core (or detect it's already running) ──
+	launcher := core.NewLauncher()
+	if err := launcher.Start(); err != nil {
+		if isAccessDenied(err) {
+			showHint("当前会话无权限启动 NetLimiter 核心进程。",
+				"请以管理员身份运行本程序（右键→以管理员身份运行）。")
+			os.Exit(1)
+		}
+		showHint(
+			fmt.Sprintf("无法启动核心进程：%v", err),
+			"请确认 netlimiter-core.exe 与本程序在同一目录，并以管理员身份运行。",
+		)
+		os.Exit(1)
+	}
+	defer launcher.Stop() // UI 退出时自动关闭核心进程
+
+	if pid := launcher.CorePID(); pid > 0 {
+		fmt.Printf("核心进程已启动 (PID: %d)，正在连接...\n", pid)
+	}
+
+	// ── 2. Connect to the Rust core via named pipe ──
 	client, err := ipc.NewClient()
 	if err != nil {
 		if isAccessDenied(err) {
@@ -60,7 +95,7 @@ func main() {
 		}
 		showHint(
 			fmt.Sprintf("无法连接 NetLimiter 核心进程：%v", err),
-			"请先启动 netlimiter-core（推荐执行 .\\scripts\\run.ps1）。",
+			"核心进程可能启动失败，请以管理员身份重新运行。",
 		)
 		os.Exit(1)
 	}
@@ -74,18 +109,16 @@ func main() {
 		}
 		showHint(
 			fmt.Sprintf("核心进程无响应：%v", err),
-			"请确认 netlimiter-core 正在运行，并重试 .\\scripts\\run.ps1。",
+			"请以管理员身份重新运行。",
 		)
 		os.Exit(1)
 	}
 
-	// Start the background stats polling service (independent goroutine).
-	// This decouples IPC latency from the UI refresh rate.
+	// ── 3. Start polling service & TUI ──
 	statsSvc := service.NewStatsService(client, 1*time.Second)
 	statsSvc.Start()
 	defer statsSvc.Stop()
 
-	// Start the bubbletea TUI — reads cached stats from StatsService
 	model := ui.NewModel(statsSvc)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 

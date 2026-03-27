@@ -124,3 +124,60 @@ fn parse_ipv6(data: &[u8], outbound: bool) -> Option<ParsedPacket> {
         direction,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn parses_ipv4_tcp_packet() {
+        let packet = [
+            0x45, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 64, 6, 0x00, 0x00,
+            192, 168, 1, 10,
+            8, 8, 8, 8,
+            0x30, 0x39, 0x01, 0xBB,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0x50, 0x02, 0, 0, 0, 0, 0, 0,
+        ];
+
+        let parsed = parse_packet(&packet, true).expect("should parse ipv4 tcp");
+        assert_eq!(parsed.src_ip, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)));
+        assert_eq!(parsed.dst_ip, IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)));
+        assert_eq!(parsed.src_port, 12345);
+        assert_eq!(parsed.dst_port, 443);
+        assert_eq!(parsed.protocol, 6);
+        assert_eq!(parsed.length, 40);
+        assert_eq!(parsed.direction, Direction::Outbound);
+    }
+
+    #[test]
+    fn parses_ipv6_udp_packet() {
+        let packet = [
+            0x60, 0x00, 0x00, 0x00, 0x00, 0x08, 17, 64,
+            0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+            0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2,
+            0x14, 0xE9, 0x00, 0x35, 0x00, 0x08, 0x00, 0x00,
+        ];
+
+        let parsed = parse_packet(&packet, false).expect("should parse ipv6 udp");
+        assert_eq!(parsed.src_ip, IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1)));
+        assert_eq!(parsed.dst_ip, IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 2)));
+        assert_eq!(parsed.src_port, 5353);
+        assert_eq!(parsed.dst_port, 53);
+        assert_eq!(parsed.protocol, 17);
+        assert_eq!(parsed.length, 48);
+        assert_eq!(parsed.direction, Direction::Inbound);
+    }
+
+    #[test]
+    fn rejects_unsupported_protocol() {
+        let packet = [
+            0x45, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00, 64, 1, 0x00, 0x00,
+            127, 0, 0, 1,
+            127, 0, 0, 1,
+        ];
+
+        assert!(parse_packet(&packet, true).is_none());
+    }
+}

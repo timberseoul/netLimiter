@@ -26,7 +26,9 @@ type Model struct {
 	sortBy         string // "download", "upload", "name", "pid"
 	sortAsc        bool
 	quitting       bool
-	filterCategory string // "" = all, "user", "system", "service", "unknown"
+	filterCategory string // "" = all, "user", "system", "service"
+	scrollOffset   int    // vertical scroll position (0 = top)
+	totalRows      int    // total renderable rows (for scroll bounds)
 }
 
 // NewModel creates a new TUI model backed by a StatsService.
@@ -72,14 +74,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sortAsc = !m.sortAsc
 		case "1":
 			m.filterCategory = ""
+			m.scrollOffset = 0
 		case "2":
 			m.filterCategory = "user"
+			m.scrollOffset = 0
 		case "3":
 			m.filterCategory = "system"
+			m.scrollOffset = 0
 		case "4":
 			m.filterCategory = "service"
-		case "5":
-			m.filterCategory = "unknown"
+			m.scrollOffset = 0
+		case "up", "k":
+			if m.scrollOffset > 0 {
+				m.scrollOffset--
+			}
+		case "down", "j":
+			m.scrollOffset++
+		case "pgup":
+			m.scrollOffset -= 10
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
+		case "pgdown":
+			m.scrollOffset += 10
+		case "home":
+			m.scrollOffset = 0
+		case "end":
+			m.scrollOffset = m.totalRows
 		}
 
 	case tea.WindowSizeMsg:

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Rust tests
+        working-directory: rust_core
+        shell: pwsh
+        run: |
+          cargo test
+
+      - name: Go tests
+        working-directory: go-ui
+        shell: pwsh
+        run: |
+          go test ./...

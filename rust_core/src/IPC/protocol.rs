@@ -66,3 +66,47 @@ impl IpcResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stats::flow_stat::{ProcessCategory, ProcessStats, ProcessStatus};
+
+    #[test]
+    fn serializes_stats_response() {
+        let stats = vec![ProcessStats {
+            pid: 1234,
+            name: "chrome.exe".to_string(),
+            category: ProcessCategory::User,
+            status: ProcessStatus::Active,
+            upload_speed: 12.5,
+            download_speed: 34.5,
+            total_upload: 100,
+            total_download: 200,
+        }];
+
+        let response = IpcResponse::stats(stats);
+        let json = serde_json::to_string(&response).expect("serialize stats response");
+
+        assert!(json.contains("\"type\":\"stats\""));
+        assert!(json.contains("\"name\":\"chrome.exe\""));
+        assert!(json.contains("\"category\":\"user\""));
+    }
+
+    #[test]
+    fn serializes_ack_without_extra_fields() {
+        let json = serde_json::to_string(&IpcResponse::ack()).expect("serialize ack");
+        assert_eq!(json, "{\"type\":\"ack\"}");
+    }
+
+    #[test]
+    fn deserializes_request_with_optional_fields() {
+        let json = r#"{"command":"set_limit","pid":42,"upload_limit":1024.5,"download_limit":2048.0}"#;
+        let request: IpcRequest = serde_json::from_str(json).expect("deserialize request");
+
+        assert_eq!(request.command, "set_limit");
+        assert_eq!(request.pid, Some(42));
+        assert_eq!(request.upload_limit, Some(1024.5));
+        assert_eq!(request.download_limit, Some(2048.0));
+    }
+}

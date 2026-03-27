@@ -27,6 +27,9 @@ rustc-hash = "2"
 log = "0.4"
 env_logger = "0.11"
 
+[build-dependencies]
+winres = "0.1"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

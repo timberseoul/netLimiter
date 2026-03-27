@@ -157,3 +157,54 @@ impl FlowAggregator {
         stats
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn snapshot_accumulates_totals_and_resets_deltas() {
+        let mut agg = FlowAggregator::new();
+        let name: Arc<str> = Arc::from("chrome.exe");
+
+        agg.last_reset = Instant::now() - Duration::from_secs(2);
+        agg.record(1001, &name, ProcessCategory::User, 200, 800);
+
+        let first = agg.snapshot();
+        assert_eq!(first.len(), 1);
+        let stat = &first[0];
+        assert_eq!(stat.pid, 1001);
+        assert_eq!(stat.name, "chrome.exe");
+        assert_eq!(stat.total_upload, 200);
+        assert_eq!(stat.total_download, 800);
+        assert_eq!(stat.category, ProcessCategory::User);
+        assert_eq!(stat.status, ProcessStatus::Active);
+        assert!(stat.upload_speed > 0.0);
+        assert!(stat.download_speed > 0.0);
+
+        agg.last_reset = Instant::now() - Duration::from_secs(1);
+        let second = agg.snapshot();
+        let stat = &second[0];
+        assert_eq!(stat.total_upload, 200);
+        assert_eq!(stat.total_download, 800);
+        assert_eq!(stat.upload_speed, 0.0);
+        assert_eq!(stat.download_speed, 0.0);
+    }
+
+    #[test]
+    fn record_refreshes_name_and_category() {
+        let mut agg = FlowAggregator::new();
+        let old_name: Arc<str> = Arc::from("svchost.exe");
+        let new_name: Arc<str> = Arc::from("DNS Client");
+
+        agg.record(2156, &old_name, ProcessCategory::System, 10, 20);
+        agg.record(2156, &new_name, ProcessCategory::Service, 30, 40);
+
+        let entry = agg.entries.get(&2156).expect("entry should exist");
+        assert_eq!(&*entry.name, "DNS Client");
+        assert_eq!(entry.category, ProcessCategory::Service);
+        assert_eq!(entry.total_upload, 40);
+        assert_eq!(entry.total_download, 60);
+    }
+}

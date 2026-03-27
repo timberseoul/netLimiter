@@ -3,6 +3,13 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
+    #[cfg(windows)]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set_icon("../assets/app-icon-core.ico");
+        res.compile().expect("Failed to compile Windows resources");
+    }
+
     let out_dir = env::var("OUT_DIR").unwrap();
     // OUT_DIR is like target/debug/build/<pkg>/out
     // We need to go up 3 levels to reach target/debug/ or target/release/
@@ -31,4 +38,5 @@ fn main() {
     // Re-run build script if the libs directory changes
     println!("cargo:rerun-if-changed=libs/WinDivert.dll");
     println!("cargo:rerun-if-changed=libs/WinDivert64.sys");
+    println!("cargo:rerun-if-changed=../assets/app-icon-core.ico");
 }
